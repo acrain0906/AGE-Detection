@@ -174,6 +174,7 @@ def cropFaces(summary):
 			print(index)
 		pictures[row['filename']] = extractFace (catch(row['filename']))
 	print('time taken: {} minutes'.format((time.time() - start)/60))
+	return pictures
 
 # In[29]:
 
@@ -287,7 +288,7 @@ if __name__ == '__main__':
 	detector = MTCNN()
 	# print(summary)
 	# print ('-'*80)
-	cropFaces(summary)
+	pictures = cropFaces(summary)
 		
 	del detector
 	#K.clear_session()
@@ -323,7 +324,7 @@ if __name__ == '__main__':
 
 		model.save ('testmodel') # saveModel(model)
 		testx, testy = generateSoftMax(test)
-		generateReport(testx, testy)
+		results = generateReport(testx, testy)
 	
 	print('total time taken: {} minutes'.format((time.time() - startx)/60))
 	notify.mail('Model Finished: ' + model_name, results)
