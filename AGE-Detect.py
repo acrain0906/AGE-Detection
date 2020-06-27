@@ -44,8 +44,8 @@ from tensorflow.compat.v1 import Session, RunOptions
 import sys 
 from twilio.rest import Client
 
-from sklearn.metrics import confusion_matrix
-
+from sklearn.metrics import confusion_matrix, classification_report
+from pathlib import Path
 
 
 
@@ -173,24 +173,31 @@ def cropFaces(summary):
 		if index % 1000 == 0:
 			print(index)
 		pictures[row['filename']] = extractFace (catch(row['filename']))
+	timing = (time.time() - start)/summary.shape[0] *1000
 	print('time taken: {} minutes'.format((time.time() - start)/60))
-	return pictures
+	return pictures, timing
 
 # In[29]:
 
 # Get one hot encoding of columns B
 def assignBin (x):
-	binsize = 30
 	return int(x / binsize)
 
 
+
 # one hot encoding 
-def age2Bin(x): # 0 if row['gender']=='male' else 1
+def age2Bin(x): 
 	vector = [0] * maxBin
 	vector[x] = 1
 	del vector[-1]
-	return vector 
+	 # TODO?
+	return vector
 
+def gender2Bin(x):
+	vector = [0, 0]
+	vector[0 if x == 'male' else 1] = 1
+	del vector[-1]
+	return vector
 
 def eth2Bin(x):
 	vector = [0] * maxBin2
@@ -211,7 +218,7 @@ def generateSoftMax(train):
 		if not isinstance(img, str):
 			trainx.append(img)
 			atrainy.append(age2Bin(row['age']))
-			gtrainy.append(0 if row['gender']=='male' else 1)
+			gtrainy.append(gender2Bin(row['gender']))
 			etrainy.append(eth2Bin(row['ethnicity']))
 	trainx = np.array(trainx)
 	atrainy = np.array(atrainy)
@@ -225,13 +232,66 @@ def generateSoftMax(train):
 	return trainx, trainy
 
 # calculate results 
-def generateReport(testx, testy):
-	results = ''
+# TODO_01
+def generateReport(model, testx, testy, targetNames, training_history, training_time, crop_time) -> str:
+	"""
+	train time 
+	test time per image 
+	size 
+	summary 
+	training history 
+	Results per output:
+		confusion matrix, precision, recall 
+	"""
+	# training time 
+	print(type(training_history.history['ethnicity_accuracy']))
+	try:
+		print(len(training_history.history['ethnicity_accuracy']))
+	except:
+		pass;
+	results = 'Training time: {} minutes\n'.format(training_time) 
+	
+	results += 'Crop Time per image: {} milliseconds\n'.format(crop_time)
+	
+	# test time per image 
+	starttest = time.time()
 	(apredy, gpredy, epredy) = model.predict(testx)
-	for i, (y_test, y_pred) in enumerate([(testy['age'], apredy), (testy['gender'], gpredy), (testy['ethnicity'], epredy)]):
-		matrix = confusion_matrix(y_test.argmax(axis=1).reshape(-1,1), y_pred.argmax(axis=1).reshape(-1,1))
-		b = '\n'.join('\t'.join('%0.3f' %x for x in y) for y in matrix)
-		results += '{}-{}\n\n{}\n\n\n'.format(i, matrix.shape, b)
+	results += 'test time per image: {} milliseconds\n'.format(1000 * float(time.time() - starttest) / testx.shape[0])
+	
+	# size of model 
+	size = Path(model_save_file).stat().st_size
+	results += 'size: {} GB \n\n'.format(size/1073741824)
+	
+	# Model Summary 
+	stringlist = []
+	model.summary(print_fn=lambda x: stringlist.append(x))
+	short_model_summary = "\n".join(stringlist)
+	results += short_model_summary + '\n\n'
+	
+	
+	for i, (output, y_pred) in enumerate([('age', apredy), ('gender', gpredy), ('ethnicity', epredy)]):
+		# 1 - sum 
+		new_col = np.ones(testy[output].shape[0]) - testy[output].sum(axis=1)
+		new_col = new_col.reshape(new_col.shape[0], 1)
+		y_test = np.append(testy[output], new_col, 1)
+		
+		new_col = np.ones(y_pred.shape[0]) - y_pred.sum(axis=1)
+		new_col = new_col.reshape(new_col.shape[0], 1)
+		y_pred = np.append(y_pred, new_col, 1)
+		
+		y_test = y_test.argmax(axis=1)
+		y_pred = y_pred.argmax(axis=1)
+		
+		# Precision and Recall
+		results += classification_report(y_test, y_pred, labels=list(range(len(targetNames[output]))), target_names=targetNames[output])
+		results += '\n\n'
+		
+		# confusion matrix
+		matrix = confusion_matrix(y_test, y_pred, labels = list(range(len(targetNames[output]))))
+		matrixSTR = '\n'.join('\t'.join('%0.3f' %x for x in y) for y in matrix)
+		results += '{}-{}-\n{}\n\n'.format(i, str(matrix.shape), matrixSTR)
+		results += '\n' + '-'*40 + '\n\n' # add separator
+		
 	return results
 
 def saveModel(model):
@@ -285,22 +345,39 @@ def buildModel():
 	
 if __name__ == '__main__':
 	summary = importData('./part3.tar/')
+	
 	detector = MTCNN()
-	# print(summary)
-	# print ('-'*80)
-	pictures = cropFaces(summary)
-		
+	pictures, crop_time = cropFaces(summary)
 	del detector
+	
+	
 	#K.clear_session()
 	#gc.collect()
+	binsize = 5
+	max_age = float(max(summary['age'].values))
 	summary['age'] = summary['age'].apply(assignBin)
 	maxBin = max(summary['age'].values) + 1
-
-	summary.ethnicity = pd.Categorical(summary.ethnicity)
-	summary.ethnicity = summary.ethnicity.cat.codes
+	age_names = []
+	for i in range (maxBin):
+		age_names.append('{}-{}'.format(i * binsize, (i+1) * binsize))
+	
+	
+	summary['temp'] = summary['ethnicity'].astype('category') #pd.Categorical(summary.ethnicity)
+	summary['ethnicity'] = summary['temp'].cat.codes
 	maxBin2 = max(summary['ethnicity'].values) + 1
+	
+	df = summary[['ethnicity', 'temp']].drop_duplicates().sort_values('ethnicity')
+	print(type(df))
+	# TODO_01
+	targetNames = {
+		'age' : age_names,
+		'gender' : ['male', 'female'],
+		'ethnicity' : list(df['temp'].values)
+	}
+	
+	print(targetNames)
 
-	epochcnt = 40 # int(sys.argv[1] )
+	epochcnt = 10 # 40 # int(sys.argv[1] )
 	batch = 16 # int(sys.argv[2] )
 
 	# split into train and test data 
@@ -319,12 +396,16 @@ if __name__ == '__main__':
 		# train model 
 		print('train model...')
 		start = time.time()
-		model.fit(trainx, trainy, epochs=epochcnt, batch_size=batch) 
-		print('time taken: {} minutes'.format((time.time() - start)/60))
-
-		model.save ('testmodel') # saveModel(model)
+		training_history = model.fit(trainx, trainy, epochs=epochcnt, batch_size=batch) 
+		print(type(training_history))
+		training_time = (time.time() - start)/60
+		print('training time taken: {} minutes'.format(training_time))
+		model_save_file = 'testmodel' 
+		model.save (model_save_file) # saveModel(model)
+		
 		testx, testy = generateSoftMax(test)
-		results = generateReport(testx, testy)
+		results = generateReport(model, testx, testy, targetNames, training_history, training_time, crop_time)
+		notify.mail('Model Finished: ' + model_name, results)
 	
 	print('total time taken: {} minutes'.format((time.time() - startx)/60))
-	notify.mail('Model Finished: ' + model_name, results)
+	
