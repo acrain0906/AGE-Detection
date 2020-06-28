@@ -47,6 +47,11 @@ from twilio.rest import Client
 from sklearn.metrics import confusion_matrix, classification_report
 from pathlib import Path
 
+from model import VGG, RESNET, DENSE, MOBILE, Total
+from report import generateReport
+ 
+# from tensorflow.keras.preprocessing.image import image_dataset_from_directory
+
 
 
 def Summary(directory):
@@ -233,66 +238,7 @@ def generateSoftMax(train):
 
 # calculate results 
 # TODO_01
-def generateReport(model, testx, testy, targetNames, training_history, training_time, crop_time) -> str:
-	"""
-	train time 
-	test time per image 
-	size 
-	summary 
-	training history 
-	Results per output:
-		confusion matrix, precision, recall 
-	"""
-	# training time 
-	print(type(training_history.history['ethnicity_accuracy']))
-	try:
-		print(len(training_history.history['ethnicity_accuracy']))
-	except:
-		pass;
-	results = 'Training time: {} minutes\n'.format(training_time) 
-	
-	results += 'Crop Time per image: {} milliseconds\n'.format(crop_time)
-	
-	# test time per image 
-	starttest = time.time()
-	(apredy, gpredy, epredy) = model.predict(testx)
-	results += 'test time per image: {} milliseconds\n'.format(1000 * float(time.time() - starttest) / testx.shape[0])
-	
-	# size of model 
-	size = Path(model_save_file).stat().st_size
-	results += 'size: {} GB \n\n'.format(size/1073741824)
-	
-	# Model Summary 
-	stringlist = []
-	model.summary(print_fn=lambda x: stringlist.append(x))
-	short_model_summary = "\n".join(stringlist)
-	results += short_model_summary + '\n\n'
-	
-	
-	for i, (output, y_pred) in enumerate([('age', apredy), ('gender', gpredy), ('ethnicity', epredy)]):
-		# 1 - sum 
-		new_col = np.ones(testy[output].shape[0]) - testy[output].sum(axis=1)
-		new_col = new_col.reshape(new_col.shape[0], 1)
-		y_test = np.append(testy[output], new_col, 1)
-		
-		new_col = np.ones(y_pred.shape[0]) - y_pred.sum(axis=1)
-		new_col = new_col.reshape(new_col.shape[0], 1)
-		y_pred = np.append(y_pred, new_col, 1)
-		
-		y_test = y_test.argmax(axis=1)
-		y_pred = y_pred.argmax(axis=1)
-		
-		# Precision and Recall
-		results += classification_report(y_test, y_pred, labels=list(range(len(targetNames[output]))), target_names=targetNames[output])
-		results += '\n\n'
-		
-		# confusion matrix
-		matrix = confusion_matrix(y_test, y_pred, labels = list(range(len(targetNames[output]))))
-		matrixSTR = '\n'.join('\t'.join('%0.3f' %x for x in y) for y in matrix)
-		results += '{}-{}-\n{}\n\n'.format(i, str(matrix.shape), matrixSTR)
-		results += '\n' + '-'*40 + '\n\n' # add separator
-		
-	return results
+
 
 def saveModel(model):
 	# serialize model to JSON
@@ -303,45 +249,16 @@ def saveModel(model):
 	model.save_weights("total model-{}-{}-{}.h5".format(trainlen, epochcnt, batch))
 	print("Saved model to disk")
 	
-def buildModel():
-	model = PreBuilt(
-		include_top=True,
-		weights="imagenet",
-		input_shape=(224, 224, 3),
-		classes=1000
-	)
 
-	del model.layers[-1] # delete top layer 
-	x = model.layers[-1].output
-	u = Dense(1024, activation='relu')(x)
-	age = Dense(maxBin - 1,activation='sigmoid', name = 'age')(u) # add one more layer
-	u = Dense(1024, activation='relu')(x)
-	gender = Dense(1,activation='sigmoid', name = 'gender')(u) # add one more layer
-	u = Dense(1024, activation='relu')(x)
-	ethnicity = Dense(maxBin2 - 1,activation='sigmoid', name = 'ethnicity')(u) # add one more layer
-	model = Model(model.input, [age, gender, ethnicity])
-	model.summary()
-
-	# define two dictionaries: one that specifies the loss method for
-	# each output of the network along with a second dictionary that
-	# specifies the weight per loss
-	losses = {
-		"age": "binary_crossentropy",
-		"gender": "binary_crossentropy",
-		"ethnicity": "binary_crossentropy",
-	}
-
-	model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
-	return model 
 	
-	# print('Test Accuracy: {}'.format())
-	# scores = model.evaluate(trainx, trainy)
-	# confusion_matrix(y_test, y_pred)
-	
-	# sys.stdout = notify.log
-	#string = '{}\n'.format(time.time() - start2)
-	#for i in range(len(model.metrics_names)):
-	#	string += "%s: %.2f%%\n" % (model.metrics_names[i], scores[i]*100)
+# print('Test Accuracy: {}'.format())
+# scores = model.evaluate(trainx, trainy)
+# confusion_matrix(y_test, y_pred)
+
+# sys.stdout = notify.log
+#string = '{}\n'.format(time.time() - start2)
+#for i in range(len(model.metrics_names)):
+#	string += "%s: %.2f%%\n" % (model.metrics_names[i], scores[i]*100)
 	
 if __name__ == '__main__':
 	summary = importData('./part3.tar/')
@@ -377,7 +294,7 @@ if __name__ == '__main__':
 	
 	print(targetNames)
 
-	epochcnt = 10 # 40 # int(sys.argv[1] )
+	epochcnt = 1 # 40 # int(sys.argv[1] )
 	batch = 16 # int(sys.argv[2] )
 
 	# split into train and test data 
@@ -389,23 +306,29 @@ if __name__ == '__main__':
 	print('ratio: {}'.format(float(sum(trainy['gender'])) / len(trainy['gender'])))
 	
 	print('build model...')
-	for PreBuilt, model_name in [(VGG16, 'VGG16')]:#, (ResNet152V2, 'ResNet152V2')]:
+	for model_instance in Total:
 		start2 = time.time()
-		model = buildModel()
+		age = AGE(maxBin, maxBin2)
 
 		# train model 
 		print('train model...')
 		start = time.time()
-		training_history = model.fit(trainx, trainy, epochs=epochcnt, batch_size=batch) 
+		training_history = age.model.fit(trainx, trainy, epochs=epochcnt, batch_size=batch) 
 		print(type(training_history))
 		training_time = (time.time() - start)/60
 		print('training time taken: {} minutes'.format(training_time))
-		model_save_file = 'testmodel' 
-		model.save (model_save_file) # saveModel(model)
 		
 		testx, testy = generateSoftMax(test)
-		results = generateReport(model, testx, testy, targetNames, training_history, training_time, crop_time)
-		notify.mail('Model Finished: ' + model_name, results)
+		results, acc = generateReport(age.model, testx, testy, targetNames, training_history, training_time, crop_time, age.params)
+		notify.mail('{} Finished: {}'.format(acc*100, age.name()), results)
+		with open('{}-results.txt'.format(age.name()), 'w') as f:
+			f.write(results)
 	
 	print('total time taken: {} minutes'.format((time.time() - startx)/60))
+	
+	
+
+
+
+
 	
