@@ -43,7 +43,17 @@ Extracted Faces using pre-built MTCNN which is based on the [Multi-task Cascade 
 ### Normalizing Images
 For better results from the deep neural network, the most likely image from each picture was reshaped into a 224x224 image, with each pixel ranging from zero to one. 
 
+### Re-Sampling Images 
 Also, even out the ratio of the outputs (i.e. men/women) as to prevent the model from prefering to predict any class in particular.  This rebalancing of inputs was accomplished using under-sampling, since oversampling would increase the memory requirements beyond the current limit.  
+
+The `imblearn` library is used to re-sample the data using various algorithms such as:
+  * SMOTE
+  * ADASYN
+  * BorderlineSMOTE
+  * RandomOverSampler
+  * SMOTETomek
+  * RandomUnderSampler
+  * TomekLinks
 
 ### Designing Model 
 To speed up training time, transfer learning was employed.  Each of the following models is weighted using 'imagenet' as a baseline.  Afterwards, several dense layers leading to one of three outputs are appended.  These outputs determine the Age, Gender, and Ethnicity of the person in the image.  The models compared were:
