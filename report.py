@@ -81,13 +81,15 @@ def generateReport(model, testx, testy, targetNames, training_history, training_
 		y_pred = y_pred.argmax(axis=1)
 		
 		# Precision and Recall
-		results += classification_report(y_test, y_pred, labels=list(range(len(targetNames[output]))), target_names=targetNames[output])
-		results += '\n\n'
-		
-		# confusion matrix
-		matrix = confusion_matrix(y_test, y_pred, labels = list(range(len(targetNames[output]))))
-		matrixSTR = '\n'.join('\t'.join('%0.3f' %x for x in y) for y in matrix)
-		results += 'Confusion Matrix-{}-\n{}\n\n'.format(i, matrixSTR)
-		results += '\n' + '-'*40 + '\n\n' # add separator
+		try:
+			results += classification_report(y_test, y_pred, labels=list(range(len(targetNames[output]))), target_names=targetNames[output])
+			results += '\n\n'
+			# confusion matrix
+			matrix = confusion_matrix(y_test, y_pred, labels = list(range(len(targetNames[output]))))
+			matrixSTR = '\n'.join('\t'.join('%0.3f' %x for x in y) for y in matrix)
+			results += 'Confusion Matrix-{}-\n{}\n\n'.format(i, matrixSTR)
+			results += '\n' + '-'*40 + '\n\n' # add separator
+		except:
+			pass;
 		
 	return results, acc
