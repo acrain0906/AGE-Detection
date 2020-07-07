@@ -1,16 +1,23 @@
 
-from keras.applications import VGG16,VGG16, MobileNet, MobileNetV2, DenseNet121
-from keras.layers import Dense
-from keras.engine.training import Model
+from tensorflow.keras.applications import VGG16,VGG16, MobileNet, MobileNetV2, DenseNet121 # needs to be tensorflow.keras, otherwise wont accept data pipeline 
+from tensorflow.keras.layers import Dense # needs to be 'keras' library, otherwise throws error
+from tensorflow.keras import Model
 
-def addOutputLayers(model, maxBin, maxBin2, params):
+def addOutputLayers(model, maxBin2, params):
 	del model.layers[-1] # delete top layer 
 	x = model.layers[-1].output
 	u = Dense(params['age hidden layer'], activation='relu')(x)
-	age = Dense(maxBin - 1,activation='sigmoid', name = 'age')(u) # add one more layer
+	u = Dense(params['age hidden layer'], activation='relu')(u)
+	u = Dense(params['age hidden layer 2'], activation='relu')(u)
+	u = Dense(params['age hidden layer 2'], activation='relu')(u)
+	u = Dense(params['age hidden layer 2'], activation='relu')(u)
+	age = Dense(1,activation='linear', name = 'age')(u) # add one more layer
 	u = Dense(params['gender hidden layer'], activation='relu')(x)
+	u = Dense(params['gender hidden layer'], activation='relu')(u)
+	u = Dense(int(params['gender hidden layer']/2), activation='relu')(u)
 	gender = Dense(1,activation='sigmoid', name = 'gender')(u) # add one more layer
 	u = Dense(params['ethnicity hidden layer'], activation='relu')(x)
+	u = Dense(int(params['ethnicity hidden layer']/2), activation='relu')(u)
 	ethnicity = Dense(maxBin2 - 1,activation='sigmoid', name = 'ethnicity')(u) # add one more layer
 	model = Model(model.input, [age, gender, ethnicity])
 	return model 
@@ -19,9 +26,15 @@ def addOutputLayers(model, maxBin, maxBin2, params):
 # each output of the network along with a second dictionary that
 # specifies the weight per loss
 losses = {
-			"age": "binary_crossentropy",
+			"age": "mean_absolute_error",
 			"gender": "binary_crossentropy",
 			"ethnicity": "binary_crossentropy",
+		}
+		
+metrics = {
+			"age": "mean_absolute_error",
+			"gender": "accuracy",
+			"ethnicity": "accuracy",
 		}
 
 # =============================================================================
@@ -29,7 +42,7 @@ losses = {
 # =============================================================================
 		
 class vgg16:
-	def __init__(self, maxBin, maxBin2):
+	def __init__(self, maxBin2):
 		"""
 		must have self.model, self.params, and self._name
 		"""
@@ -43,14 +56,15 @@ class vgg16:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
-			'gender hidden layer' : 1024,
+			'age hidden layer' : 512,
+			'age hidden layer 2' : 128,
+			'gender hidden layer' : 512,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin2, self.params)
 
-		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
+		self.model.compile(optimizer='Adam', loss=losses, metrics=metrics)
 	
 	def name (self):
 		return self._name
@@ -70,12 +84,12 @@ class vgg19:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 		
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		
 		# self.model.summary()
 		
@@ -103,12 +117,12 @@ class mobilenet:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
@@ -130,12 +144,12 @@ class mobilenetv2:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -156,12 +170,12 @@ class nasnetlarge:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -182,12 +196,12 @@ class nasnetmobile:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -212,12 +226,12 @@ class resnet50:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -238,12 +252,12 @@ class resnet101:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -264,12 +278,12 @@ class resnet152:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -290,12 +304,12 @@ class resnet50v2:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -316,12 +330,12 @@ class resnet101v2:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -342,12 +356,12 @@ class resnet152v2:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -372,12 +386,12 @@ class densenet121:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -398,12 +412,12 @@ class densenet169:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -424,12 +438,12 @@ class densenet201:
 		)
 		
 		self.params = {
-			'age hidden layer' : 1024,
+			'age hidden layer' : 512,
 			'gender hidden layer' : 1024,
 			'ethnicity hidden layer' : 1024,
 		}
 
-		model = addOutputLayers(model, maxBin, maxBin2, params)
+		self.model = addOutputLayers(self.model, maxBin, maxBin2, self.params)
 		self.model.compile(optimizer='Adam', loss=losses, metrics=['accuracy'])
 	
 	def name (self):
@@ -440,4 +454,4 @@ MOBILE = [mobilenet, mobilenetv2, nasnetlarge, nasnetmobile]
 RESNET = [resnet50, resnet101, resnet152, resnet50v2, resnet101v2, resnet152v2]
 DENSE = [densenet121, densenet169, densenet201]
 
-Total = VGG.extend(MOBILE).extend(RESNET).extend(DENSE)
+Total = VGG + MOBILE + RESNET + DENSE

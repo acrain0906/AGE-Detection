@@ -8,6 +8,8 @@
 
 import notify # homemade module for sending email/text notification at the 
 				# end of the script with results/timing.  
+				
+				# https://arxiv.org/abs/1604.02878
 
 from cv2 import imread
 from cv2 import imshow
@@ -49,6 +51,12 @@ from pathlib import Path
 
 from model import VGG, RESNET, DENSE, MOBILE, Total
 from report import generateReport
+
+
+from imblearn.over_sampling import SMOTE, ADASYN, BorderlineSMOTE, RandomOverSampler
+from imblearn.combine import SMOTETomek
+from imblearn.under_sampling import RandomUnderSampler, TomekLinks
+from imblearn.over_sampling import RandomOverSampler
  
 # from tensorflow.keras.preprocessing.image import image_dataset_from_directory
 
@@ -210,7 +218,34 @@ def eth2Bin(x):
 	del vector[-1]
 	return vector 
 
+def generateSoftMax2(train):
+	# convert training data 
+	print('Collect training data...')
+	trainx = []
+	atrainy = []
+	gtrainy = []
+	etrainy = []
+
+	for index, row in train.iterrows():
+		img = kpictures[row['filename']]
+		if not isinstance(img, str):
+			trainx.append(img)
+			atrainy.append(int(row['age'])) # age2Bin(row['age']))
+			gtrainy.append(gender2Bin(row['gender']))
+			etrainy.append(eth2Bin(row['ethnicity']))
+	trainx = np.array(trainx)
+	atrainy = np.array(atrainy).reshape(-1,1)
+	gtrainy = np.array(gtrainy).reshape(-1,1)
+	etrainy = np.array(etrainy)
+	trainy = {
+		"age": atrainy, 
+		"gender": gtrainy, 
+		"ethnicity": etrainy
+	}
+	return trainx, trainy
+	
 def generateSoftMax(train):
+
 	# convert training data 
 	print('Collect training data...')
 	trainx = []
@@ -222,11 +257,11 @@ def generateSoftMax(train):
 		img = pictures[row['filename']]
 		if not isinstance(img, str):
 			trainx.append(img)
-			atrainy.append(age2Bin(row['age']))
+			atrainy.append(int(row['age'])) # age2Bin(row['age']))
 			gtrainy.append(gender2Bin(row['gender']))
 			etrainy.append(eth2Bin(row['ethnicity']))
 	trainx = np.array(trainx)
-	atrainy = np.array(atrainy)
+	atrainy = np.array(atrainy).reshape(-1,1)
 	gtrainy = np.array(gtrainy).reshape(-1,1)
 	etrainy = np.array(etrainy)
 	trainy = {
@@ -248,8 +283,68 @@ def saveModel(model):
 	# serialize weights to HDF5
 	model.save_weights("total model-{}-{}-{}.h5".format(trainlen, epochcnt, batch))
 	print("Saved model to disk")
-	
 
+def saveFaces():
+	for key, value in pictures.items():
+		# results += '  - {} \t:  {}\n'.format(key,value)
+		try:
+			cv2.imwrite(key.replace('part3.tar', 'data'), value)
+		except:
+			print(key)
+			print(type(value))
+			print(value)
+		
+def loadFaces(summary):
+	print('cropping faces...')
+	start = time.time()
+	# create picture library
+	pictures = {}
+	for index, row in summary.iterrows():
+		if index % 1000 == 0:
+			print(index)
+		pictures[row['filename']] = np.asarray(Image.fromarray(cv2.imread(row['filename'])))
+	timing = (time.time() - start)/summary.shape[0] *1000
+	print('time taken: {} minutes'.format((time.time() - start)/60))
+	return pictures, timing
+	
+	
+def code (a, g, e):
+	return a * 100 + g * 10 + e
+	
+def decode(age):
+	e = age % 10 
+	age //= 10 
+	g = age % 10 
+	age //= 10 
+	return age, g, e 
+
+def resample(trainx, trainy):
+	trainy2 = []
+	for i in range(trainx.shape[0]):
+		a, g, e = trainy['age'][i], trainy['gender'][i], trainy['ethnicity'][i]
+		trainy2.append(code (a, g, e))
+	trainy2 = np.array(trainy2)
+	print(trainy2.shape)
+	print(trainx.shape)
+	
+	ros = RandomOverSampler(random_state=42)
+	trainx, trainy2 = ros.fit_resample(trainx, trainy2)
+	print(trainx.shape)
+	trainy3 = {
+		'age' : [],
+		'gender' : [],
+		'ethnicity' : [],
+	}
+	
+	for x in trainy2.tolist():
+		a, g, e = decode(x)
+		trainy3['age'].append(a)
+		trainy3['gender'].append(g)
+		trainy3['ethnicity'].append(e)
+	# trainx, trainy = resample(trainx, trainy)
+	
+	return trainx, trainy3
+	
 	
 # print('Test Accuracy: {}'.format())
 # scores = model.evaluate(trainx, trainy)
@@ -259,42 +354,52 @@ def saveModel(model):
 #string = '{}\n'.format(time.time() - start2)
 #for i in range(len(model.metrics_names)):
 #	string += "%s: %.2f%%\n" % (model.metrics_names[i], scores[i]*100)
-	
+
 if __name__ == '__main__':
-	summary = importData('./part3.tar/')
+	saved = False
+	if saved:
+		summary = importData('./data/')
+		loadFaces(summary)
+	else:
+		summary = importData('./part3.tar/')
+		k = importData('./test/')
+		
+		detector = MTCNN()
+		pictures, crop_time = cropFaces(summary)
+		kpictures, _ = cropFaces(k)
+		del detector
+		
+		# save pictures 
+		saveFaces()
 	
-	detector = MTCNN()
-	pictures, crop_time = cropFaces(summary)
-	del detector
-	
-	
-	#K.clear_session()
-	#gc.collect()
 	binsize = 5
 	max_age = float(max(summary['age'].values))
-	summary['age'] = summary['age'].apply(assignBin)
+	# summary['age'] = summary['age'].apply(assignBin)
+	# k['age'] = k['age'].apply(assignBin)
+	
 	maxBin = max(summary['age'].values) + 1
 	age_names = []
-	for i in range (maxBin):
-		age_names.append('{}-{}'.format(i * binsize, (i+1) * binsize))
+	# for i in range (maxBin):
+	# 	age_names.append('{}-{}'.format(i * binsize, (i+1) * binsize))
 	
 	
 	summary['temp'] = summary['ethnicity'].astype('category') #pd.Categorical(summary.ethnicity)
 	summary['ethnicity'] = summary['temp'].cat.codes
+	k['ethnicity'] = k['ethnicity'].astype('category').cat.codes
 	maxBin2 = max(summary['ethnicity'].values) + 1
 	
 	df = summary[['ethnicity', 'temp']].drop_duplicates().sort_values('ethnicity')
 	print(type(df))
 	# TODO_01
 	targetNames = {
-		'age' : age_names,
+		'age' : [],
 		'gender' : ['male', 'female'],
 		'ethnicity' : list(df['temp'].values)
 	}
 	
 	print(targetNames)
 
-	epochcnt = 1 # 40 # int(sys.argv[1] )
+	epochcnt = 25 # 40 # int(sys.argv[1] )
 	batch = 16 # int(sys.argv[2] )
 
 	# split into train and test data 
@@ -302,13 +407,35 @@ if __name__ == '__main__':
 	summary = summary.sample(frac=1).reset_index(drop=True) # shuffle database rows in place
 	train = summary.iloc[:split]
 	test = summary.iloc[split:]
-	trainx, trainy = generateSoftMax(train)
+	kx, ky = generateSoftMax2(k)
+	
+	# resample 
+	# trainx, trainy = resample(trainx, trainy)
+	ds_train = tf.data.Dataset.from_tensor_slices((trainx, trainy))
+	
+	# features_dataset = Dataset.from_tensor_slices(features)
+	# labels_dataset = Dataset.from_tensor_slices(labels)
+	# dataset = Dataset.zip((features_dataset, labels_dataset))
+	
+	ds_train = ds_train.cache()
+	ds_train = ds_train.shuffle(ds_info.splits['train'].num_examples)
+	ds_train = ds_train.batch(128)
+	ds_train = ds_train.prefetch(tf.data.experimental.AUTOTUNE)
+	
+	testx, testy = generateSoftMax(test)
+	ds_train = tf.data.Dataset.from_tensor_slices((trainx, trainy))
+	ds_test = ds_test.batch(128)
+	ds_test = ds_test.cache()
+	ds_test = ds_test.prefetch(tf.data.experimental.AUTOTUNE)
+	
 	print('ratio: {}'.format(float(sum(trainy['gender'])) / len(trainy['gender'])))
 	
 	print('build model...')
-	for model_instance in Total:
+	for model_class in  [VGG[0]]:
+		#try:
 		start2 = time.time()
-		age = AGE(maxBin, maxBin2)
+		age = model_class(maxBin, maxBin2)
+		print('model: {}'.format(age.name()))
 
 		# train model 
 		print('train model...')
@@ -318,11 +445,23 @@ if __name__ == '__main__':
 		training_time = (time.time() - start)/60
 		print('training time taken: {} minutes'.format(training_time))
 		
-		testx, testy = generateSoftMax(test)
+		
 		results, acc = generateReport(age.model, testx, testy, targetNames, training_history, training_time, crop_time, age.params)
 		notify.mail('{} Finished: {}'.format(acc*100, age.name()), results)
 		with open('{}-results.txt'.format(age.name()), 'w') as f:
 			f.write(results)
+			
+			
+		# Test pictures 
+		result = age.model.evaluate(kx, ky)
+		r = ''
+		for i, value in enumerate(result):
+			r += '  - {} \t:  {}\n'.format(age.model.metrics_names[i],value)
+		notify.mail('results', r)
+		
+		#except Exception as e:
+		#	print('Error!')
+		#	print(e)
 	
 	print('total time taken: {} minutes'.format((time.time() - startx)/60))
 	
